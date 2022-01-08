@@ -7,11 +7,10 @@ import (
 	"strings"
 	"crypto/sha256"
 )
-var LongestNum int
-var AttackNum int
-var ratio float64
+var start time.Time
+var EBC BlockChain
 const (
-	NodeNumber     = 50
+	NodeNumber     = 100
 	MaxChannelSize = 1000
 )
 func ComputeHashSha256(bytes []byte) string {
@@ -88,20 +87,16 @@ func computeHashForBlock(block Block) int64 {
 }
 
 func (bc *BlockChain) ValidateChain(chain *[]Block) bool {
-	
     lastBlock := (*chain)[0]
     currentIndex := 1
     for currentIndex < len(*chain) {
         block := (*chain)[currentIndex]
         // Check that the hash of the block is correct
         if block.PreviousHash != computeHashForBlock(lastBlock) {
-			// fmt.Println("error1",block.PreviousHash,computeHashForBlock(lastBlock))
-			// fmt.Println(chain)
             return false
         }
         // Check that the Proof of Work is correct
         if !bc.ValidProof(lastBlock.Proof, block.Proof) {
-			// fmt.Println("error2")
             return false
         }
         lastBlock = block
@@ -169,12 +164,6 @@ func (n *Node) Run() {
 	go n.Receive()
 	go n.Mine()
 }
-func (n *Node) AttackRun() {
-	fmt.Println("start attack node : ", n.id)
-	go n.Receive()
-	go n.AttackMine()
-}
-
 
 func (n *Node) Mine() {
 	for {
@@ -188,31 +177,10 @@ func (n *Node) Mine() {
 		// fmt.Println("test node : ", n.id, "Blockchain: ", bc)
 		
 		if (bc.ValidateChain(&(bc.chain))) {
-			//fmt.Println("Node", n.id, "Mined", " New Length is", len(n.chain.chain))
-			LongestNum = len(n.chain.chain)
-			fmt.Println("LongestNum", LongestNum)
-			n.Broadcast(Message{sender : n.id, bc : *(n.chain)})
-		}
-	}
-}
-
-func (n *Node) AttackMine() {
-	for {
-		//fmt.Println(n.id, "  Mining some coins")
-		bc := n.chain
-		// We run the proof of work algorithm to get the next proof...
-		proof := bc.ProofOfWork(bc.LastBlock().Proof)
-
-		// Forge the new Block by adding it to the chain
-		bc.NewBlock(proof, bc.LastBlock().hash)
-		// fmt.Println("test node : ", n.id, "Blockchain: ", bc)
-		// fmt.Println("AttackNum is growing",bc.chain,bc.ValidateChain(&(bc.chain)))
-		if (bc.ValidateChain(&(bc.chain))) {
-			// fmt.Println("Node", n.id, "Mined", " New Length is", len(n.chain.chain))
-			AttackNum := len(n.chain.chain)
-			fmt.Println("AttackNum", AttackNum)
-			if (AttackNum > LongestNum + 2) {
-				fmt.Println("Attack Successfully!")
+			fmt.Println("Node", n.id, "Mined", " New Length is", len(n.chain.chain))
+			if (len(n.chain.chain) == 100) {
+				elapsed := time.Since(start)
+    			fmt.Println("生成100个节点耗时:", elapsed)
 			}
 			n.Broadcast(Message{sender : n.id, bc : *(n.chain)})
 		}
@@ -254,33 +222,19 @@ func (n *Node) Broadcast(msg Message) {
 
 
 func main() {
-
-	ratio := 0.1
-	nodes := make([]*Node, int(NodeNumber*(1-ratio)))
-	nodes2 := make([]*Node, int(NodeNumber*ratio))
+	nodes := make([]*Node, NodeNumber)
 	peers := make(map[uint64]chan Message)
-	peers2 := make(map[uint64]chan Message)
-	for i := 0; i < int(NodeNumber*(1-ratio)); i++ {
+	for i := 0; i < NodeNumber; i++ {
 		peers[uint64(i)] = make(chan Message, MaxChannelSize)
 	}
-	for i := uint64(0); i < uint64(NodeNumber*(1-ratio)); i++ {
+	for i := uint64(0); i < NodeNumber; i++ {
 		var bc = NewBlockChain()
 		nodes[i] = NewNode(i, peers, peers[i], bc)
 	}
-	for i := 0; i < int(NodeNumber*(ratio)); i++ {
-		peers2[uint64(i)] = make(chan Message, MaxChannelSize)
-	}
-	for i := uint64(0); i < uint64(NodeNumber*(ratio)); i++ {
-		var bc = NewBlockChain()
-		nodes2[i] = NewNode(i, peers2, peers2[i], bc)
-	}
-	//start all nodes
-	for i := 0; i < int(NodeNumber*(1-ratio)); i++ {
+	start = time.Now()
+	// start all nodes
+	for i := 0; i < NodeNumber; i++ {
 		go nodes[i].Run()
-	}
-
-	for i := 0; i < int(NodeNumber*ratio); i++ {
-		go nodes2[i].AttackRun()
 	}
 
 	// block to wait for all nodes' threads
